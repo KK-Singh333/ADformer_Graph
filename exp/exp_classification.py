@@ -23,14 +23,17 @@ warnings.filterwarnings("ignore")
 class Exp_Classification(Exp_Basic):
     def __init__(self, args):
         super().__init__(args)
-
+        self.args=args
         self.swa_model = optim.swa_utils.AveragedModel(self.model)
         self.swa = args.swa
 
     def _build_model(self):
         # model input depends on data
         # train_data, train_loader = self._get_data(flag='TRAIN')
-        test_data, test_loader = self._get_data(flag="TEST")
+        if self.args.use_graph:
+            test_data,test_loader,test_graph_data,test_graph_loader=self._get_data(flag="TEST")
+        else:
+            test_data, test_loader = self._get_data(flag="TEST")
         self.args.seq_len = test_data.max_seq_len  # redefine seq_len
         self.args.pred_len = 0
         # self.args.enc_in = train_data.feature_df.shape[1]
@@ -47,8 +50,12 @@ class Exp_Classification(Exp_Basic):
 
     def _get_data(self, flag):
         random.seed(self.args.seed)
-        data_set, data_loader = data_provider(self.args, flag)
-        return data_set, data_loader
+        if self.args.use_graph:
+            data_set,data_loader,graph_data,graph_data_loader=data_provider(self.args, flag)
+            return data_set,data_loader,graph_data,graph_data_loader
+        else:
+            data_set, data_loader = data_provider(self.args, flag)
+            return data_set, data_loader
 
     def _select_optimizer(self):
         model_optim = optim.Adam(self.model.parameters(), lr=self.args.learning_rate)
@@ -58,7 +65,7 @@ class Exp_Classification(Exp_Basic):
         criterion = nn.CrossEntropyLoss()
         return criterion
 
-    def vali(self, vali_data, vali_loader, criterion):
+    def vali(self, vali_data, vali_loader, criterion,vali_graph_data=None,vali_graph_loader=None):
         total_loss = []
         preds = []
         trues = []
@@ -67,15 +74,21 @@ class Exp_Classification(Exp_Basic):
         else:
             self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, label, padding_mask) in enumerate(vali_loader):
+            for i, (batch_x, label, padding_mask),(graph_batch) in enumerate(zip(vali_loader,vali_graph_loader)):
                 batch_x = batch_x.float().to(self.device)
                 padding_mask = padding_mask.float().to(self.device)
                 label = label.to(self.device)
 
                 if self.swa:
-                    outputs = self.swa_model(batch_x, padding_mask, None, None)
+                    if self.args.use_graph:
+                        outputs = self.swa_model(batch_x, padding_mask,None,None,graph_batch=graph_batch)
+                    else:
+                        outputs = self.swa_model(batch_x, padding_mask,None,None,graph_batch=None)
                 else:
-                    outputs = self.model(batch_x, padding_mask, None, None)
+                    if self.args.use_graph:
+                        outputs = self.model(batch_x, padding_mask,None,None,graph_batch=graph_batch)
+                    else:
+                        outputs = self.model(batch_x, padding_mask,None,None,graph_batch=None)
 
                 pred = outputs.detach().cpu()
                 loss = criterion(pred, label.long().cpu())
@@ -125,9 +138,15 @@ class Exp_Classification(Exp_Basic):
         return total_loss, metrics_dict
 
     def train(self, setting):
-        train_data, train_loader = self._get_data(flag="TRAIN")
-        vali_data, vali_loader = self._get_data(flag="VAL")
-        test_data, test_loader = self._get_data(flag="TEST")
+        if self.args.use_graph:
+            train_data,train_loader,train_graph_data,train_graph_loader=self._get_data(flag="TRAIN")
+            vali_data,vali_loader,vali_graph_data,vali_graph_loader=self._get_data(flag="TRAIN")
+            test_data,test_loader,test_graph_data,test_graph_loader=self._get_data(flag="TRAIN")
+        else:
+            train_data, train_loader = self._get_data(flag="TRAIN")
+            vali_data, vali_loader = self._get_data(flag="VAL")
+            test_data, test_loader = self._get_data(flag="TEST")
+
         print(train_data.X.shape)
         print(train_data.y.shape)
         print(vali_data.X.shape)
@@ -166,15 +185,17 @@ class Exp_Classification(Exp_Basic):
             self.model.train()
             epoch_time = time.time()
 
-            for i, (batch_x, label, padding_mask) in enumerate(train_loader):
+            for i, (batch_x, label, padding_mask),(graph_batch) in enumerate(zip(train_loader,train_graph_loader)):
                 iter_count += 1
                 model_optim.zero_grad()
 
                 batch_x = batch_x.float().to(self.device)
                 padding_mask = padding_mask.float().to(self.device)
                 label = label.to(self.device)
-
-                outputs = self.model(batch_x, padding_mask, None, None)
+                if self.args.use_graph:
+                    outputs = self.model(batch_x, padding_mask,None,None,graph_batch=graph_batch)
+                else:
+                    outputs = self.model(batch_x, padding_mask,None,None,graph_batch=None)
                 loss = criterion(outputs, label.long())
                 train_loss.append(loss.item())
 
@@ -204,8 +225,12 @@ class Exp_Classification(Exp_Basic):
 
             print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
-            vali_loss, val_metrics_dict = self.vali(vali_data, vali_loader, criterion)
-            test_loss, test_metrics_dict = self.vali(test_data, test_loader, criterion)
+            if self.args.use_graph:
+                vali_loss, val_metrics_dict = self.vali(vali_data, vali_loader, criterion,vali_graph_data=vali_graph_data,vali_graph_loader=vali_graph_loader)
+                test_loss, test_metrics_dict = self.vali(test_data, test_loader, criterion,vali_graph_data=test_graph_data,vali_graph_loader=test_graph_loader)
+            else:
+                vali_loss, val_metrics_dict = self.vali(vali_data, vali_loader, criterion)
+                test_loss, test_metrics_dict = self.vali(test_data, test_loader, criterion)
 
             print(
                 f"Epoch: {epoch + 1}, Steps: {train_steps}, | Train Loss: {train_loss:.5f}\n"

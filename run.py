@@ -117,6 +117,8 @@ if __name__ == '__main__':
     parser.add_argument('--p_hidden_dims', type=int, nargs='+', default=[128, 128],
                         help='hidden layer dimensions of projector (List)')
     parser.add_argument('--p_hidden_layers', type=int, default=2, help='number of hidden layers in projector')
+    parser.add_argument('--use_graph', type=int, default=0, help='0 not to use graph 1 to use graph')
+
 
 
     args = parser.parse_args()

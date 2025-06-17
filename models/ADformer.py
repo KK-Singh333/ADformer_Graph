@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from layers.ADformer_EncDec import Encoder, EncoderLayer
 from layers.SelfAttention_Family import ADformerLayer
 from layers.Embed import TokenChannelEmbedding
-from ..
+from models.gat import GAT
 import numpy as np
 
 
@@ -17,11 +17,26 @@ class Model(nn.Module):
 
     def __init__(self, configs):
         super(Model, self).__init__()
+        self.configs=configs
         self.task_name = configs.task_name
         self.pred_len = configs.pred_len
         self.seq_len = configs.seq_len
         self.output_attention = configs.output_attention
         self.enc_in = configs.enc_in
+        self.graph_model=GAT(
+        num_node_features=configs.num_features,
+        hidden_channels=configs.hidden_channels,
+        num_heads=configs.num_heads,
+        num_layers=configs.num_layers,
+        dropout=configs.dropout
+    )   
+        self.graph_model=GAT(
+        num_node_features=self.args.num_features,
+        hidden_channels=self.args.d_model,
+        num_heads=self.args.num_heads,
+        num_layers=self.args.num_layers,
+        dropout=self.args.dropout
+    )
         # Embedding
         if configs.no_temporal_block and configs.no_channel_block:
             raise ValueError("At least one of the two blocks should be True")
@@ -79,10 +94,9 @@ class Model(nn.Module):
             self.dropout = nn.Dropout(configs.dropout)
             self.projection = nn.Linear(
                 configs.d_model * len(patch_num_list) +
-                configs.d_model * len(up_dim_list),
+                configs.d_model * len(up_dim_list)+(configs.d_model if configs.d_model else 0),
                 configs.num_class,
             )
-
     def forecast(self, x_enc, x_mark_enc, x_dec, x_mark_dec):
         raise NotImplementedError
 
@@ -92,16 +106,21 @@ class Model(nn.Module):
     def anomaly_detection(self, x_enc):
         raise NotImplementedError
 
-    def classification(self, x_enc, x_mark_enc):
+    def classification(self, x_enc, x_mark_enc,graph_batch=None):
         # Embedding
         enc_out_t, enc_out_c = self.enc_embedding(x_enc)
         enc_out_t, enc_out_c, attns_t, attns_c = self.encoder(enc_out_t, enc_out_c, attn_mask=None)
+        if self.configs.use_graph:
+            node_emb=self.graph_model(graph_batch.x,graph_batch.edge_index,graph_batch.batch)
+            node_emb=node_emb.unsqueeze(1)
         if enc_out_t is None:
             enc_out = enc_out_c
         elif enc_out_c is None:
             enc_out = enc_out_t
         else:
             enc_out = torch.cat((enc_out_t, enc_out_c), dim=1)
+        if self.configs.use_graph:
+            enc_out=torch.cat((enc_out,node_emb),dim=1)
 
         # Output
         output = self.act(
@@ -114,7 +133,7 @@ class Model(nn.Module):
         output = self.projection(output)  # (batch_size, num_classes)
         return output
 
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
+    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None,graph_batch=None):
         if (
             self.task_name == "long_term_forecast"
             or self.task_name == "short_term_forecast"
@@ -128,6 +147,6 @@ class Model(nn.Module):
             dec_out = self.anomaly_detection(x_enc)
             return dec_out  # [B, L, D]
         if self.task_name == "classification":
-            dec_out = self.classification(x_enc, x_mark_enc)
+            dec_out = self.classification(x_enc, x_mark_enc,graph_batch=graph_batch)
             return dec_out  # [B, N]
         return None

@@ -15,7 +15,9 @@ from data_provider.data_loader import (
 )
 from data_provider.uea import collate_fn
 from torch.utils.data import DataLoader
-
+from ..graph-networks.eeg_graph_dataset import EEGGraphDataset
+from torch_geometric.data import Data, Dataset
+from torch_geometric.loader import DataLoader as GraphDataLoader
 data_dict = {
     # subject-dependent
     'ADSZDep': DependentLoader,  # ADSZ
@@ -85,7 +87,10 @@ def data_provider(args, flag):
             args=args,
             flag=flag,
         )
-
+        if args.use_graph:
+            graph_data=EEGGraphDataset(data_set.X,data_set.y)
+            graph_data_loader=GraphDataLoader(graph_data, batch_size=batch_size, shuffle=shuffle_flag)
+            
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,
@@ -94,6 +99,8 @@ def data_provider(args, flag):
             drop_last=drop_last,
             collate_fn=lambda x: collate_fn(x, max_len=args.seq_len)  # only called when yeilding batches
         )
+        if args.use_graph:
+            return data_set,data_loader,graph_data,graph_data_loader
         return data_set, data_loader
     else:
         if args.data == 'm4':
