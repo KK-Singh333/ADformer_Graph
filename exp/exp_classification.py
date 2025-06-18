@@ -74,11 +74,12 @@ class Exp_Classification(Exp_Basic):
         else:
             self.model.eval()
         with torch.no_grad():
-            for i, (batch_x, label, padding_mask),(graph_batch) in enumerate(zip(vali_loader,vali_graph_loader)):
+            for i, ((batch_x, label, padding_mask),(graph_batch)) in enumerate(zip(vali_loader,vali_graph_loader)):
                 batch_x = batch_x.float().to(self.device)
                 padding_mask = padding_mask.float().to(self.device)
                 label = label.to(self.device)
-
+                graph_batch=graph_batch.to(self.device)
+                # print(graph_batch.device)
                 if self.swa:
                     if self.args.use_graph:
                         outputs = self.swa_model(batch_x, padding_mask,None,None,graph_batch=graph_batch)
@@ -140,8 +141,8 @@ class Exp_Classification(Exp_Basic):
     def train(self, setting):
         if self.args.use_graph:
             train_data,train_loader,train_graph_data,train_graph_loader=self._get_data(flag="TRAIN")
-            vali_data,vali_loader,vali_graph_data,vali_graph_loader=self._get_data(flag="TRAIN")
-            test_data,test_loader,test_graph_data,test_graph_loader=self._get_data(flag="TRAIN")
+            vali_data,vali_loader,vali_graph_data,vali_graph_loader=self._get_data(flag="VAL")
+            test_data,test_loader,test_graph_data,test_graph_loader=self._get_data(flag="TEST")
         else:
             train_data, train_loader = self._get_data(flag="TRAIN")
             vali_data, vali_loader = self._get_data(flag="VAL")
@@ -185,13 +186,14 @@ class Exp_Classification(Exp_Basic):
             self.model.train()
             epoch_time = time.time()
 
-            for i, (batch_x, label, padding_mask),(graph_batch) in enumerate(zip(train_loader,train_graph_loader)):
+            for i, ((batch_x, label, padding_mask),(graph_batch)) in enumerate(zip(train_loader,train_graph_loader)):
                 iter_count += 1
                 model_optim.zero_grad()
 
                 batch_x = batch_x.float().to(self.device)
                 padding_mask = padding_mask.float().to(self.device)
                 label = label.to(self.device)
+                graph_batch=graph_batch.to(self.device)
                 if self.args.use_graph:
                     outputs = self.model(batch_x, padding_mask,None,None,graph_batch=graph_batch)
                 else:
@@ -269,8 +271,12 @@ class Exp_Classification(Exp_Basic):
         return self.model
 
     def test(self, setting, test=0):
-        vali_data, vali_loader = self._get_data(flag="VAL")
-        test_data, test_loader = self._get_data(flag="TEST")
+        if self.args.use_graph:
+          vali_data,vali_loader,vali_graph_data,vali_graph_loader=self._get_data(flag='VAL')
+          test_data,test_loader,test_graph_data,test_graph_loader=self._get_data(flag='TEST')
+        else:
+          vali_data, vali_loader = self._get_data(flag="VAL")
+          test_data, test_loader = self._get_data(flag="TEST")
         if test:
             print("loading model")
             path = (
@@ -293,8 +299,12 @@ class Exp_Classification(Exp_Basic):
                 self.model.load_state_dict(torch.load(model_path))
 
         criterion = self._select_criterion()
-        vali_loss, val_metrics_dict = self.vali(vali_data, vali_loader, criterion)
-        test_loss, test_metrics_dict = self.vali(test_data, test_loader, criterion)
+        if self.args.use_graph:
+          vali_loss,val_metrics_dict=self.vali(vali_data,vali_loader,criterion,vali_graph_data,vali_graph_loader)
+          test_loss,test_metrics_dict=self.vali(test_data,test_loader,criterion,test_graph_data,test_graph_loader)
+        else:
+          vali_loss, val_metrics_dict = self.vali(vali_data, vali_loader, criterion)
+          test_loss, test_metrics_dict = self.vali(test_data, test_loader, criterion)
 
         # result save
         folder_path = (
