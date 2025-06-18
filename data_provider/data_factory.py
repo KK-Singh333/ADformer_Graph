@@ -15,7 +15,7 @@ from data_provider.data_loader import (
 )
 from data_provider.uea import collate_fn
 from torch.utils.data import DataLoader
-from ..graph-networks.eeg_graph_dataset import EEGGraphDataset
+from graph-networks.eeg_graph_dataset import EEGGraphDataset
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader as GraphDataLoader
 data_dict = {
@@ -60,7 +60,7 @@ def data_provider(args, flag):
             batch_size = 1  # bsz=1 for evaluation
         freq = args.freq
     else:
-        shuffle_flag = True
+        shuffle_flag = False
         drop_last = True
         batch_size = args.batch_size  # bsz for train and valid
         freq = args.freq
