@@ -15,7 +15,7 @@ from data_provider.data_loader import (
 )
 from data_provider.uea import collate_fn
 from torch.utils.data import DataLoader
-from graph-networks.eeg_graph_dataset import EEGGraphDataset
+from graph_networks.eeg_graph_dataset import EEGGraphDataset
 from torch_geometric.data import Data, Dataset
 from torch_geometric.loader import DataLoader as GraphDataLoader
 data_dict = {
