@@ -23,20 +23,15 @@ class Model(nn.Module):
         self.seq_len = configs.seq_len
         self.output_attention = configs.output_attention
         self.enc_in = configs.enc_in
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.graph_model=GAT(
-        num_node_features=configs.num_features,
-        hidden_channels=configs.hidden_channels,
-        num_heads=configs.num_heads,
-        num_layers=configs.num_layers,
-        dropout=configs.dropout
-    )   
-        self.graph_model=GAT(
-        num_node_features=self.args.num_features,
-        hidden_channels=self.args.d_model,
-        num_heads=self.args.num_heads,
-        num_layers=self.args.num_layers,
-        dropout=self.args.dropout
+        num_node_features=128,
+        hidden_channels=self.configs.d_model,
+        num_heads=8,
+        num_layers=2,
+        dropout=0.2
     )
+        self.graph_model=self.graph_model.to(self.device)
         # Embedding
         if configs.no_temporal_block and configs.no_channel_block:
             raise ValueError("At least one of the two blocks should be True")
@@ -112,7 +107,9 @@ class Model(nn.Module):
         enc_out_t, enc_out_c, attns_t, attns_c = self.encoder(enc_out_t, enc_out_c, attn_mask=None)
         if self.configs.use_graph:
             node_emb=self.graph_model(graph_batch.x,graph_batch.edge_index,graph_batch.batch)
+
             node_emb=node_emb.unsqueeze(1)
+            # print(node_emb.shape)
         if enc_out_t is None:
             enc_out = enc_out_c
         elif enc_out_c is None:
