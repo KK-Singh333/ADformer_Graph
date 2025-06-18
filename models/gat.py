@@ -43,12 +43,12 @@ class GAT(torch.nn.Module):
         else:
             # If no batch vector provided, assume single graph
             x = torch.mean(x, dim=0, keepdim=True)  # [1, hidden_channels]
-        
+        return x
         # Final classification
-        x = self.classifier(x)
+        # x = self.classifier(x)
         
-        # Return shape [batch_size]
-        return torch.sigmoid(x).view(-1)
+        # # Return shape [batch_size]
+        # return torch.sigmoid(x).view(-1)
     
     def count_parameters(self):
         """Count the number of trainable parameters in the model"""
