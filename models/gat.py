@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GATConv
-
-
+from models.sparse_graph import SparseGraphAttentionLayer
+from models.multihead_graph_attention import MultiHeadSparseGAT
 class GAT(torch.nn.Module):
     def __init__(self, num_node_features, hidden_channels=64, num_heads=8, num_layers=2, dropout=0.6):
         super(GAT, self).__init__()
@@ -15,16 +15,48 @@ class GAT(torch.nn.Module):
         
         # First GAT layer
         self.convs = nn.ModuleList()
-        self.convs.append(GATConv(num_node_features, hidden_channels, heads=num_heads, dropout=dropout))
+        # self.convs.append(GATConv(num_node_features, hidden_channels, heads=num_heads, dropout=dropout))
         
-        # Middle GAT layers (if any)
+        # # Middle GAT layers (if any)
+        # for _ in range(num_layers - 2):
+        #     self.convs.append(GATConv(hidden_channels * num_heads, hidden_channels, heads=num_heads, dropout=dropout))
+        
+        # # Last GAT layer (uses single head attention for final representation)
+        # if num_layers > 1:
+        #     self.convs.append(GATConv(hidden_channels * num_heads, hidden_channels, heads=1, dropout=dropout))
+        self.convs.append(
+            MultiHeadSparseGAT(
+                in_features=num_node_features,
+                out_features=hidden_channels,
+                num_heads=num_heads,
+                dropout=dropout,
+                final_layer=False
+            )
+        )
+
+        # Hidden Layers: [hidden_channels * num_heads] → [hidden_channels * num_heads]
         for _ in range(num_layers - 2):
-            self.convs.append(GATConv(hidden_channels * num_heads, hidden_channels, heads=num_heads, dropout=dropout))
-        
-        # Last GAT layer (uses single head attention for final representation)
+            self.convs.append(
+                MultiHeadSparseGAT(
+                    in_features=hidden_channels * num_heads,
+                    out_features=hidden_channels,
+                    num_heads=num_heads,
+                    dropout=dropout,
+                    final_layer=False
+                )
+            )
+
+        # Final Layer: [hidden_channels * num_heads] → [hidden_channels] (1 head, no activation)
         if num_layers > 1:
-            self.convs.append(GATConv(hidden_channels * num_heads, hidden_channels, heads=1, dropout=dropout))
-        
+            self.convs.append(
+                MultiHeadSparseGAT(
+                    in_features=hidden_channels * num_heads,
+                    out_features=hidden_channels,
+                    num_heads=1,
+                    dropout=dropout,
+                    final_layer=True  # no concat, no ELU
+                )
+            )
         # Output layer for binary classification
         self.classifier = nn.Linear(hidden_channels, 1)
         
