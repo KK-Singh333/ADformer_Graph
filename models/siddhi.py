@@ -4,7 +4,8 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
-
+from layers.Embed import TokenChannelEmbedding
+from models.gat import GAT
 class MatrixFactorizationLayer(nn.Module):
     def __init__(self, input_dim_p, input_dim_c, latent_dim):
         super(MatrixFactorizationLayer, self).__init__()
@@ -76,22 +77,67 @@ class WeightedFusionLayer(nn.Module):
         return y
 
 class UnifiedModel(nn.Module):
-    def __init__(self, input_dim_p,input_dim_c, latent_dim):
+    def __init__(self,configs):
         super(UnifiedModel, self).__init__()
+        if configs.no_temporal_block and configs.no_channel_block:
+            raise ValueError("At least one of the two blocks should be True")
+        if configs.no_temporal_block:
+            patch_len_list = []
+        else:
+            patch_len_list = list(map(int, configs.patch_len_list.split(",")))
+        if configs.no_channel_block:
+            up_dim_list = []
+        else:
+            up_dim_list = list(map(int, configs.up_dim_list.split(",")))
+        stride_list = patch_len_list
+        seq_len = configs.seq_len
+        patch_num_list = [
+            int((seq_len - patch_len) / stride + 2)
+            for patch_len, stride in zip(patch_len_list, stride_list)
+        ]
+        augmentations = configs.augmentations.split(",")
+
+        self.enc_embedding=TokenChannelEmbedding(
+            configs.enc_in,
+            configs.seq_len,
+            configs.d_model,
+            patch_len_list,
+            up_dim_list,
+            stride_list,
+            configs.dropout,
+            augmentations,
+        )
+        input_dim_p=(configs.d_ff/patch_len_list[0])+1
+        input_dim_c=up_dim_list[0]
+        latent_dim=configs.d_model
         self.matrix_factorization = MatrixFactorizationLayer(input_dim_p,input_dim_c, latent_dim)
         self.cross_attention = CrossAttentionLayer(input_dim_p,input_dim_c,latent_dim)
         self.weighted_fusion = WeightedFusionLayer(input_dim_p,input_dim_c)
+        self.graph_layer=GAT(
+        num_node_features=configs.num_features,
+        hidden_channels=configs.hidden_channels,
+        num_heads=configs.num_heads,
+        num_layers=configs.num_layers,
+        dropout=configs.dropout
+    )
+        self.projection=torch.nn.LazyLinear(configs.num_class,bias=True)
     
-    def forward(self, X_patch, X_channel):
+    def forward(self, x_enc, x_mark_enc=None, x_dec=None, x_mark_dec=None, mask=None,graph_batch=None):
         # Matrix Factorization
+        X_patch, X_channel = self.enc_embedding(x_enc)
+        X_patch=X_patch[0]
+        X_channel=X_channel[0]
         H_factor = self.matrix_factorization(X_patch, X_channel)
         
         # Cross Attention
         H_hybrid = self.cross_attention(X_patch, X_channel)
-        
+        graph_matrix=self.graph_layer(graph_batch.x,graph_batch.edge_index,graph_batch.batch)
+        concatenated = torch.cat([H_factor, H_hybrid, graph_matrix], dim=1)
+        flattened = torch.flatten(concatenated, start_dim=1)
+
         # Weighted Fusion and Task-Specific Output
 
-        y = self.weighted_fusion(H_factor, H_hybrid)
+        y = self.projection(flattened)
         
         return y
 
