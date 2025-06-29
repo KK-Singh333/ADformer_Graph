@@ -67,15 +67,17 @@ class GAT(torch.nn.Module):
             if i < self.num_layers - 1:
                 x = F.elu(x)
                 x = F.dropout(x, p=self.dropout, training=self.training)
-        
-        # Graph-level pooling
-        from torch_geometric.nn import global_mean_pool
-        if batch is not None:
-            x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]
-        else:
-            # If no batch vector provided, assume single graph
-            x = torch.mean(x, dim=0, keepdim=True)  # [1, hidden_channels]
+        batch_size=int(x.size(0)/self.channels)
+        x.view(batch_size,self.channels,self.hidden_channels)
         return x
+        # Graph-level pooling
+        # from torch_geometric.nn import global_mean_pool
+        # if batch is not None:
+        #     x = global_mean_pool(x, batch)  # [batch_size, hidden_channels]
+        # else:
+        #     # If no batch vector provided, assume single graph
+        #     x = torch.mean(x, dim=0, keepdim=True)  # [1, hidden_channels]
+        # return x
         # Final classification
         # x = self.classifier(x)
         
