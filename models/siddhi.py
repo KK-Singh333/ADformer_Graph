@@ -76,9 +76,9 @@ class WeightedFusionLayer(nn.Module):
        
         return y
 
-class UnifiedModel(nn.Module):
+class Model(nn.Module):
     def __init__(self,configs):
-        super(UnifiedModel, self).__init__()
+        super(Model, self).__init__()
         if configs.no_temporal_block and configs.no_channel_block:
             raise ValueError("At least one of the two blocks should be True")
         if configs.no_temporal_block:
@@ -107,20 +107,28 @@ class UnifiedModel(nn.Module):
             configs.dropout,
             augmentations,
         )
-        input_dim_p=(configs.d_ff/patch_len_list[0])+1
+        input_dim_p=int((configs.d_model/patch_len_list[0]))+1
         input_dim_c=up_dim_list[0]
         latent_dim=configs.d_model
         self.matrix_factorization = MatrixFactorizationLayer(input_dim_p,input_dim_c, latent_dim)
         self.cross_attention = CrossAttentionLayer(input_dim_p,input_dim_c,latent_dim)
         self.weighted_fusion = WeightedFusionLayer(input_dim_p,input_dim_c)
         self.graph_layer=GAT(
-        num_node_features=configs.num_features,
-        hidden_channels=configs.hidden_channels,
-        num_heads=configs.num_heads,
-        num_layers=configs.num_layers,
-        dropout=configs.dropout
-    )
-        self.projection=torch.nn.LazyLinear(configs.num_class,bias=True)
+        num_node_features=128,
+        hidden_channels=configs.d_model,
+        num_heads=8,
+        num_layers=2,
+        dropout=0.2
+        )
+        self.channels=19
+        self.project_nodes= nn.Parameter(torch.empty(configs.d_model, input_dim_c))
+        # print(input_dim_p)
+        # print(self.channels)
+        # print(input_dim_c)
+        # print((2*input_dim_p+self.channels)*input_dim_c)
+        self.projection=torch.nn.Linear((2*input_dim_p+self.channels)*input_dim_c,configs.num_class,bias=True)
+        nn.init.xavier_uniform_(self.project_nodes)
+        # nn.init.xavier_uniform_(self.projection)
     def drop_edges(self, edge_index, k=0.3):
         num_edges = edge_index.size(1)  # edge_index shape: [2, num_edges]
         keep_num = int(k * num_edges)
@@ -139,15 +147,22 @@ class UnifiedModel(nn.Module):
         X_patch, X_channel = self.enc_embedding(x_enc)
         X_patch=X_patch[0]
         X_channel=X_channel[0]
+        # print(X_patch.shape)
+        # print(X_channel.shape)
         H_factor = self.matrix_factorization(X_patch, X_channel)
         
         # Cross Attention
         H_hybrid = self.cross_attention(X_patch, X_channel)
         graph_batch.edge_index=self.drop_edges(graph_batch.edge_index)
         graph_matrix=self.graph_layer(graph_batch.x,graph_batch.edge_index,graph_batch.batch)
-        concatenated = torch.cat([H_factor, H_hybrid, graph_matrix], dim=1)
+        projected_graph_matrix=torch.matmul(graph_matrix, self.project_nodes)
+        # print(H_hybrid.shape)
+        # print(H_factor.shape)
+        # print(projected_graph_matrix.shape)
+        concatenated = torch.cat([H_factor, H_hybrid, projected_graph_matrix], dim=1)
+        # print(concatenated.shape)
         flattened = torch.flatten(concatenated, start_dim=1)
-
+        # print(flattened.shape)
         # Weighted Fusion and Task-Specific Output
 
         y = self.projection(flattened)
