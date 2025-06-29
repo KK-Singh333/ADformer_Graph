@@ -3,6 +3,7 @@ import torch
 from models import Autoformer, Transformer, TimesNet, Nonstationary_Transformer, DLinear, FEDformer, \
     Informer, LightTS, Reformer, ETSformer, Pyraformer, PatchTST, MICN, Crossformer, FiLM, iTransformer, \
     Koopa, TiDE, TCN, EEGNet, MTST, StatisticalFeatures, SpectralFeatures, PowerFeatures, ComplexityFeatures, ADformer
+from models.siddhi import UnifiedModel
 
 
 class Exp_Basic(object):
@@ -35,6 +36,7 @@ class Exp_Basic(object):
             'PowerFeatures': PowerFeatures,
             'ComplexityFeatures': ComplexityFeatures,
             'ADformer': ADformer,
+            'Siddhi' : UnifiedModel
         }
         self.device = self._acquire_device()
         self.model = self._build_model().to(self.device)
