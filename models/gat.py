@@ -12,7 +12,7 @@ class GAT(torch.nn.Module):
         self.hidden_channels = hidden_channels
         self.num_heads = num_heads
         self.dropout = dropout
-        
+        self.channels=19
         # First GAT layer
         self.convs = nn.ModuleList()
         # self.convs.append(GATConv(num_node_features, hidden_channels, heads=num_heads, dropout=dropout))
@@ -68,7 +68,9 @@ class GAT(torch.nn.Module):
                 x = F.elu(x)
                 x = F.dropout(x, p=self.dropout, training=self.training)
         batch_size=int(x.size(0)/self.channels)
-        x.view(batch_size,self.channels,self.hidden_channels)
+        # print(batch_size)
+        x=x.view(batch_size,self.channels,self.hidden_channels)
+        # print(x.shape)
         return x
         # Graph-level pooling
         # from torch_geometric.nn import global_mean_pool
