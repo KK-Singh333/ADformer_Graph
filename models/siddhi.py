@@ -121,6 +121,18 @@ class UnifiedModel(nn.Module):
         dropout=configs.dropout
     )
         self.projection=torch.nn.LazyLinear(configs.num_class,bias=True)
+    def drop_edges(self, edge_index, k=0.3):
+        num_edges = edge_index.size(1)  # edge_index shape: [2, num_edges]
+        keep_num = int(k * num_edges)
+
+        # Generate a random permutation of indices
+        perm = torch.randperm(num_edges)
+
+        # Keep the first `keep_num` edges
+        keep_idx = perm[:keep_num]
+
+        # Return the filtered edge_index
+        return edge_index[:, keep_idx]
     
     def forward(self, x_enc, x_mark_enc=None, x_dec=None, x_mark_dec=None, mask=None,graph_batch=None):
         # Matrix Factorization
@@ -131,6 +143,7 @@ class UnifiedModel(nn.Module):
         
         # Cross Attention
         H_hybrid = self.cross_attention(X_patch, X_channel)
+        graph_batch.edge_index=self.drop_edges(graph_batch.edge_index)
         graph_matrix=self.graph_layer(graph_batch.x,graph_batch.edge_index,graph_batch.batch)
         concatenated = torch.cat([H_factor, H_hybrid, graph_matrix], dim=1)
         flattened = torch.flatten(concatenated, start_dim=1)
