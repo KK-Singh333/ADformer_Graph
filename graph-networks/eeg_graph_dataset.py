@@ -76,7 +76,7 @@ def load_eeg_graph_data(eeg_data, labels, batch_size=32):
     val_dataset = EEGGraphDataset(eeg_data['val'], labels['val'])
     test_dataset = EEGGraphDataset(eeg_data['test'], labels['test'])
     
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
     
